@@ -3,11 +3,16 @@
 #include <mpi.h>
 #include <math.h>
 
-#define SIZE 8
-#define PROC 4
+//#define SIZE 8
+//#define PROC 4
 
-int main(int argc, char **argv) {
-
+int main(int argc, char *argv[]) {
+	
+	if (argc != 2){
+		printf("Wrong number of arguments given");
+		return -1;
+	}
+	const int SIZE = atoi(argv[1]);
 	MPI_Init(&argc, &argv);
 	int p, rank;
 	MPI_Comm_size(MPI_COMM_WORLD,&p);
@@ -15,21 +20,28 @@ int main(int argc, char **argv) {
 	char i;
 
 	char a[SIZE*SIZE];
-	const int BLOCKS = SIZE/sqrt(PROC);
+	char aa[SIZE*SIZE];
+	const int PROC = p;
+	const int SPROC = sqrt(PROC);
+	const int BLOCKS = SIZE/SPROC;
+	if (SIZE%SPROC!=0){
+		printf("SIZE has to be divisible by SPROC");
+		MPI_Finalize();
+		exit(-1);
+	}
 
 	if (rank == 0) {
 		for (int j=0; j<SIZE*SIZE; j++) {
 			a[j] = (char)j;
+			int y= SIZE*SIZE-j;
+			aa[j] = (char)y;
 		}
 	}
-	if (p != PROC) {
-		printf("Error");
-		MPI_Finalize();
-		exit(-1);
-	}
 	char b[BLOCKS*BLOCKS];
+	char bb[BLOCKS*BLOCKS];
 	for (int j=0; j<BLOCKS*BLOCKS; j++){
 		b[j]=0;
+		bb[j]=0;
 	}
 	MPI_Datatype blocktype;
 	MPI_Datatype blocktype2;
@@ -41,12 +53,13 @@ int main(int argc, char **argv) {
 	int counts[PROC];
 	for (int j=0; j<2; j++) {
 		for (int k=0; k<2; k++) {
-			disps[j*2+k] = j*SIZE*BLOCKS+k*BLOCKS;
-			counts [j*2+k] = 1;
+			disps[j*SPROC+k] = j*SIZE*BLOCKS+k*BLOCKS;
+			counts [j*SPROC+k] = 1;
 		}
 	}
 	MPI_Scatterv(a, counts, disps, blocktype, b, BLOCKS*BLOCKS,MPI_CHAR,0,MPI_COMM_WORLD);
-	for (int proc=0;proc<p;proc++){
+	MPI_Scatterv(aa, counts, disps, blocktype, bb, BLOCKS*BLOCKS,MPI_CHAR,0,MPI_COMM_WORLD);
+	for (int proc=0;proc<PROC;proc++){
 		if (proc == rank) {
 			printf("Rank = %d\n", rank);
 			if (rank == 0) {
@@ -54,6 +67,13 @@ int main(int argc, char **argv) {
 				for (int k=0;k<SIZE;k++){
 					for (int j=0; j<SIZE; j++){
 						printf("%3d",(int)a[k*SIZE+j]);
+					}
+					printf("\n");
+				}
+				printf("\n");
+				for (int k=0;k<SIZE;k++){
+					for(int j=0; j<SIZE; j++){	
+						printf("%3d",(int)aa[k*SIZE+j]);
 					}
 					printf("\n");
 				}
@@ -66,6 +86,13 @@ int main(int argc, char **argv) {
 				printf("\n");
 			}
 			printf("\n");
+			for (int j=0; j<BLOCKS; j++){
+				for (int k=0; k<BLOCKS; k++){
+					printf("%3d",(int)bb[j*BLOCKS+k]);
+				}
+			
+			printf("\n");
+			}
 		}
 		MPI_Barrier(MPI_COMM_WORLD);
 	}
