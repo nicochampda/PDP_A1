@@ -105,12 +105,12 @@ int main(int argc, char *argv[]) {
             for (i = 0; i < p_x; i++){
 		for (j = 0; j < p_y; j++){
                     //for matrix A
-		if((i+j) != 0)
-
-		    MPI_Isend(&mat_size, 1, MPI_INT, i*2 + j, 1, MPI_COMM_WORLD, &request1);
-		    MPI_Isend(&block_size, 1, MPI_INT, i*2 + j, 2, MPI_COMM_WORLD, &request2);
-		for (k = 0; k < block_size;k++){
-       		    MPI_Isend(&A[offset + k][0], mat_size, MPI_DOUBLE, i*2 + j, 100+k, MPI_COMM_WORLD, &request3);
+                    if ((i+j) != 0){
+		    	MPI_Isend(&mat_size, 1, MPI_INT, i*p_x + j, 1, MPI_COMM_WORLD, &request1);
+		    	MPI_Isend(&block_size, 1, MPI_INT, i*p_x + j, 2, MPI_COMM_WORLD, &request2);
+			for (k = 0; k < block_size;k++){
+       		    		MPI_Isend(&A[offset + k][0], mat_size, MPI_DOUBLE, i*p_x + j, 100+k, MPI_COMM_WORLD, &request3);
+		}
 		}
                     //for matrix B
 
@@ -128,11 +128,8 @@ int main(int argc, char *argv[]) {
 		for (k = 0; k < block_size;k++){
 			MPI_Recv(&arows[k], mat_size, MPI_DOUBLE, 0, 100+k, MPI_COMM_WORLD, &status3);  
 		}
-		/* Collect B blocks */
-		if(rank == 2)
-			sleep(2);
-		if (rank == 3)
-			sleep(4);	
+
+		sleep(rank);
 		printf("mat %i block %i rank %i\n",mat_size, block_size, rank);
 		for(i = 0; i < block_size; i++){
 			printf("\n");
@@ -142,6 +139,9 @@ int main(int argc, char *argv[]) {
 		} 
 	
 		printf("\n");
+		/* Collect B blocks */
+		
+
 		/* Apply fox algorithm on blocks */
               
               //1. broadcast Aim
