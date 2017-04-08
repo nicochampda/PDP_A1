@@ -22,7 +22,7 @@ void Block_matmul(int *subA, int *SubB, int *SubC, int block_size){
 
 int main(int argc, char *argv[]) {
   
-    int rank, size, mat_size, block_size, i, j,k, p_x,p_y, dest;
+    int rank, size, mat_size, block_size, i, j,k, p_x,p_y, dest, offset;
     double A[mat_size][mat_size];
     double B[mat_size][mat_size];
     double C[mat_size][mat_size];
@@ -50,6 +50,11 @@ int main(int argc, char *argv[]) {
     MPI_Dims_create(size, 2, dims);  
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &block_comm); 
     MPI_Comm_rank(block_comm, &rank); 
+
+    //MPI_Comm_split(MPI_COMM_WORLD, rank / 4, 0, &row_comm);
+    //MPI_Comm_split(MPI_COMM_WORLD, rank % 4, 0, &col_comm);
+    //get row and column rank
+    //
     
     mat_size = atoi(argv[1]);
 	/* Generate random Matrices */
@@ -61,17 +66,26 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		
-		/* Distributes Blocks from A and B */
-		p_x = sqrt(size);
-		p_y = sqrt(size);
+	    /* Distributes Blocks from A and B */
+	    p_x = sqrt(size);
+	    p_y = sqrt(size);
+
+	    block_size = mat_size / p_x;
+	    offset = 0;
+	
+            for (i = 0; i < p_x; i++){
+		for (j = 0; j < p_y; j++){
+                    //for matrix A
+		    MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+		    MPI_Send(&block_size, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+       		    MPI_Send(&a[offset][0], block_size*mat_size, MPI_DOUBLE, i+j, 1, MPI_COMM_WORLD);
+
+                    //for matrix B
+
+      		}
+       		offset = offset + block_size;
+       	    }
 		
-		block_size = mat_size / p_x;
-		
-		for (i = 0; i < p_x; i++){
-			for (j = 0; j < p_y; j++){
-				//MPI_Isend() A,B blocks
-			}
-		}
 	}
 	
 	if (rank > 0){
