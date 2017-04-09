@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
     double **subA;
     double **subB;
     double **subC;
-
+    double B_blocks[block_size][block_size];
     double *arows;
 
     int dims[2] = {0,0}, periods[2] = {1,1}, reorder = 1; 
@@ -47,10 +47,15 @@ int main(int argc, char *argv[]) {
     // create communicators
     /*MPI_Comm row_comm;
     MPI_Comm col_comm;
-    MPI_Comm block_comm;
-
-  
+    MPI_Comm block_comm;    
     MPI_Datatype block;*/
+
+
+    mat_size = atoi(argv[1]);
+    double A[mat_size][mat_size];
+    double B[mat_size][mat_size];
+    double C[mat_size][mat_size];
+
     MPI_Status status;
     MPI_Status status2;
     MPI_Status status3;
@@ -73,13 +78,19 @@ int main(int argc, char *argv[]) {
     //MPI_Comm_split(MPI_COMM_WORLD, rank % 4, 0, &col_comm);
     //get row and column rank
     //
+    MPI_Datatype blocktype;
+    MPI_Datatype blocktype2;
+    MPI_Type_vector(block_size,block_size,mat_size,MPI_DOUBLE,&blocktype2);
+    MPI_Type_create_resized(blocktype2,0,sizeof(double),&blocktype);
+    MPI_Type_commit(&blocktype);
+
+    p_x = sqrt(size);
+    p_y = sqrt(size);
+
+    block_size = mat_size / p_x;
     
 	/* Generate random Matrices */
     if (rank == 0){
-        mat_size = atoi(argv[1]);
-        double A[mat_size][mat_size];
-        double B[mat_size][mat_size];
-        double C[mat_size][mat_size];
 
         for (i = 0; i < mat_size; i++){
 	    for (j = 0; j < mat_size; j++){
@@ -96,10 +107,7 @@ int main(int argc, char *argv[]) {
 	   printf("\n");
 
 	    /* Distributes Blocks from A and B */
-	    p_x = sqrt(size);
-	    p_y = sqrt(size);
-
-	    block_size = mat_size / p_x;
+	    
 	    offset = 0;
 	
             for (i = 0; i < p_x; i++){
@@ -119,7 +127,20 @@ int main(int argc, char *argv[]) {
        	    }
 		
 	}
-	
+	int disps[p_x*p_y];
+        int counts[p_x*p_y];
+
+        for (i = 0; i < p_x; i++){
+                for (j = 0; j < p_y; j++){
+                    disps[i*p_x+j]=i*mat_size*block_size+j*block_size;
+                    counts[i*p_x+j]=1;       
+                 }
+        }
+
+
+        MPI_Scatterv(B,counts,disps,blocktype,B_blocks,block_size*block_size,MPI_DOUBLE,0,MPI_COMM_WORLD);
+
+
 	if (rank > 0){
 		/* Collect A rows */
                MPI_Recv(&mat_size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);  
