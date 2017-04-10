@@ -38,10 +38,7 @@ int main(int argc, char *argv[]) {
     int rank, size, col_rank, mat_size, block_size, i, j,k, p_x,p_y, dest, offset;
     double **A_rows;
     double **B_blocks;
-    double **subB;
-    double **subC;
-    //double B_blocks[block_size][block_size];
-    double *arows;
+    double **C_blocks;
 
     int dims[2] = {0,0}, periods[2] = {1,1}, reorder = 1; 
 
@@ -74,20 +71,22 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
     
+    p_x = sqrt(size);
+    p_y = sqrt(size);
     /* Create a virtual 2D-grid topology */
     /* MPI_Dims_create(size, 2, dims);  
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &block_comm); 
     MPI_Comm_rank(block_comm, &rank); 
     */
 
-    /*MPI_Comm col_comm;
+    MPI_Comm col_comm;
     //MPI_Comm_split(MPI_COMM_WORLD, rank / 4, 0, &row_comm);
-    MPI_Comm_split(MPI_COMM_WORLD, rank % 4, rank, &col_comm);
+    int color = rank %  p_x;
+    MPI_Comm_split(MPI_COMM_WORLD, color, rank, &col_comm);
     MPI_Comm_rank(col_comm, &col_rank);
-*/
+
+    printf("col rank %i\n", col_rank);
     
-    p_x = sqrt(size);
-    p_y = sqrt(size);
 
     block_size = mat_size / p_x;
 
@@ -99,7 +98,10 @@ int main(int argc, char *argv[]) {
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
                 A[i][j] = i+j;   /* to be Replace by random */
-                B[i][j] = i*j;
+                if(i == j)
+                    B[i][j] = 1;
+                else
+                    B[i][j] = 0;
 	        }
         }
 
@@ -177,7 +179,7 @@ int main(int argc, char *argv[]) {
          
 
 		/*Printing part */
-		sleep(rank);
+		sleep(rank*2);
 		printf("mat %i block %i rank %i\n",mat_size, block_size, rank);
 		for(i = 0; i < block_size; i++){
 		    printf("\n");
@@ -197,15 +199,27 @@ int main(int argc, char *argv[]) {
 		printf("\n");
 		
 		p_y = mat_size / block_size;
-		double C_blocks[block_size][block_size];
+	    C_blocks = (double **)malloc(block_size * sizeof(double *));
+        for(i = 0; i < block_size; i++){
+            C_blocks[i] = (double *)malloc(block_size * sizeof(double));
+        }
 		/* Apply fox algorithm on blocks */
-		for(i = 0; i < p_y; i++){
-			//Block_matmul(A_rows, B_blocks, C_blocks, block_size, col_rank);
+		for(i = 0; i < 1; i++){
+			Block_matmul(A_rows, B_blocks, C_blocks, block_size, col_rank);
 			//MPI_Send(&B_blocks, 1, blocktype, (col_rank + 1) % p_y, 1234, col_comm);
 			//MPI_Recv(&B_blocks, 1, blocktype, (col_rank - 1) % p_y, 1234, col_comm, &status);
 						
 		}
+		printf("\n");
+	    printf("\n");
+		for(i = 0; i < block_size; i++){
+		    printf("\n");
+			for(j = 0; j < block_size; j++){
+				printf("%.1f\t", C_blocks[i][j]);
+			}
+		} 
               
+        printf("\n");
               //1. broadcast Aim
               //2. call block_matmul
               //3. shift the B blocks
@@ -227,7 +241,7 @@ int main(int argc, char *argv[]) {
 			//MPI_recv()
 			//sum up results
     }
-
+    MPI_Comm_free(&col_comm);
     MPI_Finalize();
   
     return 0;
