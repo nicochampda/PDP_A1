@@ -37,9 +37,10 @@ int main(int argc, char *argv[]) {
 
     int rank, size, col_rank, mat_size, block_size, i, j,k, p_x,p_y, dest, offset;
     double **A_rows;
+    double **B_blocks;
     double **subB;
     double **subC;
-    double B_blocks[block_size][block_size];
+    //double B_blocks[block_size][block_size];
     double *arows;
 
     int dims[2] = {0,0}, periods[2] = {1,1}, reorder = 1; 
@@ -59,10 +60,14 @@ int main(int argc, char *argv[]) {
     MPI_Status status;
     MPI_Status status2;
     MPI_Status status3;
+    MPI_Status status4;
+    
 
     MPI_Request request1;
     MPI_Request request2;
     MPI_Request request3;
+    MPI_Request request4;
+    
 
     MPI_Init(&argc, &argv);       
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -80,24 +85,21 @@ int main(int argc, char *argv[]) {
     MPI_Comm_split(MPI_COMM_WORLD, rank % 4, rank, &col_comm);
     MPI_Comm_rank(col_comm, &col_rank);
 */
-    MPI_Datatype blocktype;
-    MPI_Datatype blocktype2;
-    MPI_Type_vector(block_size,block_size,mat_size,MPI_DOUBLE,&blocktype2);
-    MPI_Type_create_resized(blocktype2,0,sizeof(double),&blocktype);
-    MPI_Type_commit(&blocktype);
-
+    
     p_x = sqrt(size);
     p_y = sqrt(size);
 
     block_size = mat_size / p_x;
+
+   
     
 	/* Generate random Matrices */
     if (rank == 0){
-
+        printf("mat %i block %i rank %i\n",mat_size, block_size, rank);
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
                 A[i][j] = i+j;   /* to be Replace by random */
-                B[i][j] = 2.0;
+                B[i][j] = i*j;
 	        }
         }
 
@@ -108,6 +110,14 @@ int main(int argc, char *argv[]) {
 		    }
 	    }
 	    printf("\n");
+        for (i = 0; i < mat_size; i++){
+	        printf("\n");
+		    for (j = 0; j < mat_size; j++){
+		        printf("%.1f\t", B[i][j]);
+		    }
+	    }
+	    printf("\n");
+
 
 	    /* Distributes Blocks from A and B */
 	    
@@ -122,27 +132,23 @@ int main(int argc, char *argv[]) {
 			        for (k = 0; k < block_size;k++){
        		    	    MPI_Isend(&A[offset + k][0], mat_size, MPI_DOUBLE, i*p_x + j, 100+k, MPI_COMM_WORLD, &request3);
 		            }
-		        }
+
                 //for matrix B
+
+                             for (k = 0; k < block_size;k++){
+       		    	    MPI_Isend(&B[i*block_size + k][j*block_size], block_size, MPI_DOUBLE, i*p_x + j, 200+k, MPI_COMM_WORLD, &request4);
+		            }
+                             
+		        }
+
+
+                
 
       	    }
        		offset = offset + block_size;
        	}
 		
     }
-	int disps[p_x*p_y];
-    int counts[p_x*p_y];
-
-    for (i = 0; i < p_x; i++){
-        for (j = 0; j < p_y; j++){
-            disps[i*p_x+j]=i*mat_size*block_size+j*block_size;
-            counts[i*p_x+j]=1;       
-        }
-    }
-
-
-    MPI_Scatterv(B,counts, disps,blocktype,B_blocks,block_size*block_size,MPI_DOUBLE,0,MPI_COMM_WORLD);
-
 
 	if (rank > 0){
 	    /* Collect A rows */
@@ -157,6 +163,19 @@ int main(int argc, char *argv[]) {
 			MPI_Recv(A_rows[k], mat_size, MPI_DOUBLE, 0, 100+k, MPI_COMM_WORLD, &status3);  
 		}
 
+          /* Collect B blocks */
+
+           B_blocks= (double **)malloc(block_size * sizeof(double *));
+        for(i = 0; i < block_size; i++){
+            B_blocks[i] = (double *)malloc(block_size * sizeof(double));
+        }
+
+                for (k = 0; k < block_size;k++){
+			MPI_Recv(B_blocks[k], block_size, MPI_DOUBLE, 0, 200+k, MPI_COMM_WORLD, &status4);  
+		}
+                
+         
+
 		/*Printing part */
 		sleep(rank);
 		printf("mat %i block %i rank %i\n",mat_size, block_size, rank);
@@ -164,9 +183,9 @@ int main(int argc, char *argv[]) {
 		    printf("\n");
 			for(j = 0; j < mat_size; j++){
 				printf("%.1f\t", A_rows[i][j]);
-			}
+			}   
 		} 
-		printf("\n");
+            printf("\n");
 	    printf("\n");
 		for(i = 0; i < block_size; i++){
 		    printf("\n");
