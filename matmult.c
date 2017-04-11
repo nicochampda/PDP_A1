@@ -100,10 +100,7 @@ int main(int argc, char *argv[]) {
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
                 A[i][j] = i+j;   /* to be Replace by random */
-                if(i == j)
-                    B[i][j] = 1;
-                else
-                    B[i][j] = 0;
+                B[i][j] = i*j;
 	        }
         }
 
