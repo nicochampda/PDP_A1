@@ -18,12 +18,12 @@ void Block_matmul(double **subA, double **subB, double **subC, int block_size, i
 }
 
 /* Function to Print matrix */
-void PrMat(double **matrix, int row, int col){   
+void PrMat(int mat_size, double matrix[mat_size][mat_size]){   
     int i, j;
     printf("\n");
-    for (i = 0; i < row; i++){
-        for (j = 0; j < col; j++){
-            printf("%f", matrix[i][j]);
+    for (i = 0; i < mat_size; i++){
+        for (j = 0; j < mat_size; j++){
+            printf("%.1f\t", matrix[i][j]);
         }
         printf("\n");
     }
@@ -36,7 +36,7 @@ void PrMat(double **matrix, int row, int col){
 
 int main(int argc, char *argv[]) {
 
-    int rank, size, col_rank, mat_size, block_size, i, j,k, p_x,p_y, dest, offset;
+    int rank, nprocs,row_rank, col_rank, mat_size, block_size, i, j,k, k1, p_x,p_y, dest, offset;
     double **A_rows;
     double **B_blocks;
     double **C_blocks;
@@ -59,32 +59,35 @@ int main(int argc, char *argv[]) {
     MPI_Status status2;
     MPI_Status status3;
     MPI_Status status4;
+    MPI_Status status5;
     
 
     MPI_Request request1;
     MPI_Request request2;
     MPI_Request request3;
     MPI_Request request4;
-    
+    MPI_Request request5;
 
     MPI_Init(&argc, &argv);       
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
     
-    p_x = sqrt(size);
-    p_y = sqrt(size);
+    p_x = sqrt(nprocs);
+    p_y = sqrt(nprocs);
     /* Create a virtual 2D-grid topology */
     /* MPI_Dims_create(size, 2, dims);  
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, reorder, &block_comm); 
     MPI_Comm_rank(block_comm, &rank); 
     */
-
+    MPI_Comm row_comm;
     MPI_Comm col_comm;
-    //MPI_Comm_split(MPI_COMM_WORLD, rank / 4, 0, &row_comm);
+    MPI_Comm_split(MPI_COMM_WORLD, rank / p_x, rank, &row_comm);
     int color = rank %  p_x;
     MPI_Comm_split(MPI_COMM_WORLD, color, rank, &col_comm);
     MPI_Comm_rank(col_comm, &col_rank);
+    MPI_Comm_rank(row_comm, &row_rank);
+    
 
     block_size = mat_size / p_x;
 
@@ -223,7 +226,7 @@ int main(int argc, char *argv[]) {
  * *******************************************************************/
 
 
-    p_y = mat_size / block_size;
+    
     C_blocks = (double **)malloc(block_size * sizeof(double *));
     for(i = 0; i < block_size; i++){
         C_blocks[i] = (double *)calloc(block_size, sizeof(double));
@@ -252,14 +255,48 @@ int main(int argc, char *argv[]) {
           
     printf("\n");
 
-    /* Send result */
+    /* Send C_blocks in processors(i,j) back to root processor */
     //MPI_send()
-    
-	
-	if (rank == 0){ 
-			//MPI_recv()
-			//sum up results
+    if(rank>0){
+
+        for(i=0; i<block_size;i++){
+           for (j=0; j<block_size; j++){
+              MPI_Isend(&C_blocks[i][j],1,MPI_DOUBLE,0,2000+ rank,MPI_COMM_WORLD,&request5);
+           }
+        }
+
     }
+    
+    /* Reception by root processor of all C_blocks and storing it C */	
+    if (rank == 0){ 
+       //MPI_recv()
+      //sum up results
+    for(i=0; i<block_size;i++){
+           for (j=0; j<block_size; j++){
+                C[i][j] = C_blocks[i][j];   
+           }
+   }
+
+
+    for(k=1; k< nprocs ; k++){
+       for(i=0; i<block_size;i++){
+           for (j=0; j<block_size; j++){
+              MPI_Recv(&C_blocks[i][j],1,MPI_DOUBLE,k,2000+k,MPI_COMM_WORLD,&status5);
+                
+              C[(k / p_x)*block_size + i][(k%p_x)*block_size + j] = C_blocks[i][j];
+                
+           }
+        }
+ 
+    }
+    
+
+   
+
+   printf("C : \n");
+   PrMat(mat_size, C);
+    
+   }
 
     /*Free all allocations */
     for(i = 0; i < block_size; i++){
@@ -271,7 +308,7 @@ int main(int argc, char *argv[]) {
     free(B_blocks);
     free(C_blocks);
     
-    
+    MPI_Comm_free(&row_comm);   
     MPI_Comm_free(&col_comm);
     MPI_Finalize();
   

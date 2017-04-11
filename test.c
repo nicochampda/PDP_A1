@@ -15,7 +15,7 @@ void PrMat(int mat_size, double matrix[mat_size][mat_size]){
 }
 
 int main(int argc, char *argv[]) {
-    int mat_size = 8;
+    int mat_size = 4;
     double A[mat_size][mat_size];
     double B[mat_size][mat_size];
     double C[mat_size][mat_size];
