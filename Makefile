@@ -1,5 +1,5 @@
 CC         =  mpicc
-CCFLAGS    =  -O3 -Wall -g
+CCFLAGS    =  -O3
 LIBS       =  -lmpi -lm
 
 matmult: matmult.c
@@ -13,4 +13,6 @@ integral2d:             prog.c
 
 
 clean:
+	$(RM) prog
+	$(RM) matmult
 	$(RM) prog
