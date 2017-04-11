@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
-
+#include <time.h>
 
 /* Function to perform the step 2 of Fox's algorithm */
 void Block_matmul(double **subA, double **subB, double **subC, int block_size, int block_nbr){
@@ -40,6 +40,8 @@ int main(int argc, char *argv[]) {
     double **A_rows;
     double **B_blocks;
     double **C_blocks;
+
+    double begin, end; // for time measurements
 
     mat_size = atoi(argv[1]);
     double A[mat_size][mat_size];
@@ -213,7 +215,7 @@ int main(int argc, char *argv[]) {
 /**********************************************************************
  * FOX Algorithm
  * *******************************************************************/
-
+    begin = MPI_Wtime();
 
     
     C_blocks = (double **)malloc(block_size * sizeof(double *));
@@ -231,6 +233,8 @@ int main(int argc, char *argv[]) {
             MPI_Recv(B_blocks[j], block_size, MPI_DOUBLE, (col_rank + 1 + p_y) % p_y, 1000 + j, col_comm, &status);
         }
     }
+
+    end = MPI_Wtime();
 
     /*
     sleep(5 + rank);
@@ -277,7 +281,8 @@ int main(int argc, char *argv[]) {
         }  
 
    printf("C : \n");
-  // PrMat(mat_size, C);
+   // PrMat(mat_size, C);
+   printf("\n Fox's algorithm time: %g s\n\n", end - begin);
     
    }
 
