@@ -5,6 +5,13 @@
 #include <unistd.h>
 #include <time.h>
 
+
+#define randmin 0
+#define randmax 50
+
+
+
+
 /* Function to perform the step 2 of Fox's algorithm */
 void Block_matmul(double *subA, double *subB, double *subC, int block_size, int mat_size, int block_nbr){
     int i,j,k;
@@ -23,7 +30,7 @@ void PrMat(int mat_size, double matrix[mat_size * mat_size]){
     printf("\n");
     for (i = 0; i < mat_size; i++){
         for (j = 0; j < mat_size; j++){
-            printf("%.1f\t", matrix[i*mat_size + j]);
+            printf("%.3f\t", matrix[i*mat_size + j]);
         }
         printf("\n");
     }
@@ -36,7 +43,7 @@ void PrMat(int mat_size, double matrix[mat_size * mat_size]){
 
 int main(int argc, char *argv[]) {
 
-    int rank, nprocs,row_rank, col_rank, mat_size, block_size, i, j, p_x, p_y, dest;
+    int rank, nprocs,row_rank, col_rank, mat_size, block_size, i, j, p_x, dest;
     double *A_rows;
     double *B_blocks;
     double *C_blocks;
@@ -52,12 +59,27 @@ int main(int argc, char *argv[]) {
     MPI_Request request4;
     MPI_Request request5;
 
+   /* if (mat_size%p_x != 0){
+
+       printf("maxtrix size must be divisible by sqrt(nprocs)\n");
+       exit(-1);
+    }
+
+    if (nprocs%(int)p_x!=0){
+
+       printf("nprocs must be a perfect square number\n");
+       exit(-1);
+    }
+
+    */
+
+
     MPI_Init(&argc, &argv);       
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     p_x = sqrt(nprocs);
-    p_y = sqrt(nprocs);
+
     block_size = mat_size / p_x;
 
     MPI_Request req_arr[nprocs];
@@ -83,17 +105,18 @@ int main(int argc, char *argv[]) {
     MPI_Type_vector(block_size, block_size, mat_size, MPI_DOUBLE, &blockselect);
     MPI_Type_commit(&blockselect);
 
+
 /**********************************************************************
  * Master processor work 
  * *******************************************************************/
    
-    
+    srand(time(NULL)); 
 	/* Generate random Matrices */
     if (rank == 0){
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
-                A[i * mat_size + j] = i+j;   /* to be Replace by random */
-                B[i * mat_size + j] = i*j;
+                A[i * mat_size + j] =( rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
+                B[i * mat_size + j] =( rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
 	        }
         }
 
@@ -104,7 +127,7 @@ int main(int argc, char *argv[]) {
         /* Distributes Blocks from A and B */
         for (i = 0; i < p_x; i++){
             MPI_Isend(&A[i * block_size * mat_size], 1, rowstype, i, 3, col_comm, &request3);
-		    for (j = 0; j < p_y; j++){
+		    for (j = 0; j < p_x; j++){
                 dest = i * p_x + j;
                 MPI_Isend(&B[i*block_size*mat_size + j*block_size], 1, blockselect, dest, 4, MPI_COMM_WORLD, &request4);
       	    }
@@ -141,9 +164,9 @@ int main(int argc, char *argv[]) {
 
     /* Apply fox algorithm on blocks */
     for(i = 0; i < p_x; i++){
-        MPI_Isend(B_blocks, 1, blocktype, (col_rank - 1 + p_y) % p_y, 100 + i, col_comm, &request4);
-        Block_matmul(A_rows, B_blocks, C_blocks, block_size, mat_size, (col_rank + i) % p_y);
-        MPI_Recv(B_blocks, 1, blocktype, (col_rank + 1) % p_y, 100 + i, col_comm, MPI_STATUS_IGNORE);
+        MPI_Isend(B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &request4);
+        Block_matmul(A_rows, B_blocks, C_blocks, block_size, mat_size, (col_rank + i) % p_x);
+        MPI_Recv(B_blocks, 1, blocktype, (col_rank + 1) % p_x, 100 + i, col_comm, MPI_STATUS_IGNORE);
     }
 
     
