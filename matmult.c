@@ -180,6 +180,7 @@ int main(int argc, char *argv[]) {
         MPI_Isend(B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &request5);
         Block_matmul(A_rows, B_blocks, C_blocks, block_size, mat_size, (col_rank + i) % p_x);
         MPI_Recv(B_blocks, 1, blocktype, (col_rank + 1) % p_x, 100 + i, col_comm, MPI_STATUS_IGNORE);
+        MPI_Wait(&request5, MPI_STATUS_IGNORE);
     }
 
     /* Send C_blocks in processors(i,j) back to root processor */
