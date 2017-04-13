@@ -42,7 +42,7 @@ void PrMat(int mat_size, double matrix[mat_size * mat_size]){
 
 int main(int argc, char *argv[]) {
 
-    int rank, nprocs,row_rank, col_rank, mat_size, block_size, i, j, p_x, dest, Print;
+    int rank, nprocs,row_rank, col_rank, mat_size = 0, block_size =0, i, j, p_x, dest, Print = 0;
     double *A_rows;
     double *B_blocks;
     double *C_blocks;
@@ -124,10 +124,8 @@ int main(int argc, char *argv[]) {
 	        }
         }
 
-
         begin = MPI_Wtime();
 	    
-        
         /* Distributes Blocks from A and B */
         for (i = 0; i < p_x; i++){
             MPI_Isend(&A[i * block_size * mat_size], 1, rowstype, i, 3, col_comm, &request3);
@@ -145,6 +143,9 @@ int main(int argc, char *argv[]) {
     MPI_Bcast(&block_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     A_rows = (double *)malloc(block_size * mat_size * sizeof(double));
+    for (i = 0; i < mat_size * block_size; i++)
+        A_rows[i] = 0;
+        
     /* Collect A rows in the first column of processors */
     if (row_rank == 0){
         MPI_Recv(A_rows, 1, rowstype, 0, 3, col_comm, MPI_STATUS_IGNORE);  
@@ -155,8 +156,14 @@ int main(int argc, char *argv[]) {
 
     /* Collect B blocks */
     B_blocks= (double *)malloc(block_size * block_size * sizeof(double));
+    for (i = 0; i < block_size * block_size; i++)
+        B_blocks[i] = 0;
     MPI_Recv(B_blocks, 1, blocktype, 0, 4, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+    if (rank == 0){
+        MPI_Wait(&request3, MPI_STATUS_IGNORE);
+        MPI_Wait(&request4, MPI_STATUS_IGNORE);
+    }
     
     
 /**********************************************************************
@@ -165,15 +172,16 @@ int main(int argc, char *argv[]) {
 
     
     C_blocks = (double *)malloc(block_size * block_size * sizeof(double *));
+    for (i = 0; i < block_size * block_size; i++)
+        C_blocks[i] = 0;
 
     /* Apply fox algorithm on blocks */
     for(i = 0; i < p_x; i++){
-        MPI_Isend(B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &request4);
+        MPI_Isend(B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &request5);
         Block_matmul(A_rows, B_blocks, C_blocks, block_size, mat_size, (col_rank + i) % p_x);
         MPI_Recv(B_blocks, 1, blocktype, (col_rank + 1) % p_x, 100 + i, col_comm, MPI_STATUS_IGNORE);
     }
 
-    
     /* Send C_blocks in processors(i,j) back to root processor */
     
     MPI_Isend(C_blocks, 1, blocktype, 0, 50, MPI_COMM_WORLD, &request5);
@@ -190,7 +198,7 @@ int main(int argc, char *argv[]) {
         MPI_Waitall(nprocs, req_arr, MPI_STATUS_IGNORE);
 
         end = MPI_Wtime();
-        
+            
         if (Print == 1){
             printf("A : \n");
             PrMat(mat_size, A);
@@ -203,6 +211,7 @@ int main(int argc, char *argv[]) {
         printf("\n Fox's algorithm time: %g s\n\n", end - begin);
     } 
 
+    MPI_Wait(&request5, MPI_STATUSES_IGNORE);
 
     free(A_rows);
     free(B_blocks);
