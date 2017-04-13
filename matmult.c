@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
 
     p_x = sqrt(nprocs);
 
-    if (nprocs%(int)p_x!=0){
+    if (nprocs != p_x * p_x){
         printf("nprocs must be a perfect square number\n");
         MPI_Finalize();
         exit(0);
