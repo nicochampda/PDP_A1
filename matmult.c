@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <time.h>
 
-
 #define randmin 0
 #define randmax 50
 
@@ -43,14 +42,21 @@ void PrMat(int mat_size, double matrix[mat_size * mat_size]){
 
 int main(int argc, char *argv[]) {
 
-    int rank, nprocs,row_rank, col_rank, mat_size, block_size, i, j, p_x, dest;
+    int rank, nprocs,row_rank, col_rank, mat_size, block_size, i, j, p_x, dest, Print;
     double *A_rows;
     double *B_blocks;
     double *C_blocks;
 
     double begin = 0, end; // for time measurements
 
+    if (argc < 2 || argc > 3){
+        printf("usage : ./mpirun -np nprocs ./matmult mat_size [Print 0/1]\n");
+        exit(0);
+    }
+
     mat_size = atoi(argv[1]);
+    if (argc == 3) Print = atoi(argv[2]);
+
     double A[mat_size * mat_size];
     double B[mat_size * mat_size];
     double C[mat_size * mat_size];
@@ -59,20 +65,6 @@ int main(int argc, char *argv[]) {
     MPI_Request request4;
     MPI_Request request5;
 
-   /* if (mat_size%p_x != 0){
-
-       printf("maxtrix size must be divisible by sqrt(nprocs)\n");
-       exit(-1);
-    }
-
-    if (nprocs%(int)p_x!=0){
-
-       printf("nprocs must be a perfect square number\n");
-       exit(-1);
-    }
-
-    */
-
 
     MPI_Init(&argc, &argv);       
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -80,7 +72,20 @@ int main(int argc, char *argv[]) {
 
     p_x = sqrt(nprocs);
 
+    if (nprocs%(int)p_x!=0){
+        printf("nprocs must be a perfect square number\n");
+        MPI_Finalize();
+        exit(0);
+    }
+
     block_size = mat_size / p_x;
+
+    if (mat_size%p_x != 0){
+        printf("maxtrix size must be divisible by sqrt(nprocs)\n");
+        MPI_Finalize();
+        exit(0);
+    }
+
 
     MPI_Request req_arr[nprocs];
     /* Define Row and Column communicators */
@@ -104,7 +109,6 @@ int main(int argc, char *argv[]) {
 
     MPI_Type_vector(block_size, block_size, mat_size, MPI_DOUBLE, &blockselect);
     MPI_Type_commit(&blockselect);
-
 
 /**********************************************************************
  * Master processor work 
@@ -186,12 +190,16 @@ int main(int argc, char *argv[]) {
         MPI_Waitall(nprocs, req_arr, MPI_STATUS_IGNORE);
 
         end = MPI_Wtime();
-        printf("A : \n");
-        PrMat(mat_size, A);
-        printf("B : \n");
-        PrMat(mat_size, B);
-        printf("A * B = C : \n");
-        PrMat(mat_size, C);
+        
+        if (Print == 1){
+            printf("A : \n");
+            PrMat(mat_size, A);
+            printf("B : \n");
+            PrMat(mat_size, B);
+            printf("A * B = C : \n");
+            PrMat(mat_size, C);
+        }
+
         printf("\n Fox's algorithm time: %g s\n\n", end - begin);
     } 
 
