@@ -36,7 +36,13 @@ void PrMat(int mat_size, double matrix[mat_size * mat_size]){
     printf("\n");
 }
 
-
+/* Swap pointers */
+void swap(double **arr1, double **arr2){
+    double *temp;
+    temp = *arr1;
+    *arr1 = *arr2;
+    *arr2 = temp;
+}
 
 
 
@@ -128,8 +134,8 @@ int main(int argc, char *argv[]) {
 
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
-                A[i * mat_size + j] = ( rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
-                B[i * mat_size + j] = ( rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
+                A[i * mat_size + j] = i+j; //(rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
+                B[i * mat_size + j] = i*j; //(rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
 	        }
         }
 
@@ -199,8 +205,9 @@ int main(int argc, char *argv[]) {
         MPI_Wait(&req_B_recv, MPI_STATUS_IGNORE);
         MPI_Wait(&req_B_send, MPI_STATUS_IGNORE);
         MPI_Wait(&req_A_bcast, MPI_STATUS_IGNORE);
-        memcpy(cur_B_blocks, next_B_blocks, block_size * block_size * sizeof(double));
-        memcpy(cur_A_blocks, next_A_blocks, block_size * block_size * sizeof(double));
+        
+        swap(&cur_B_blocks, &next_B_blocks);
+        swap(&cur_A_blocks, &next_A_blocks);
     }
 
 
