@@ -4,20 +4,20 @@
 #include <math.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 
 #define randmin 0
 #define randmax 50
 
 
 
-
 /* Function to perform the step 2 of Fox's algorithm */
-void Block_matmul(double *subA, double *subB, double *subC, int block_size, int mat_size, int block_nbr){
+void Block_matmul(double *subA, double *subB, double *subC, int block_size){
     int i,j,k;
     for(i = 0; i < block_size; i++){
         for(k = 0; k < block_size; k++){
             for(j = 0; j < block_size; j++){ // efficient matrix multiplication
-                subC[i*block_size + j] += subA[i*mat_size + k + block_nbr * block_size] * subB[k * block_size + j];
+                subC[i*block_size + j] += subA[i*block_size + k] * subB[k * block_size + j];
             }
         }
     }     
@@ -29,22 +29,32 @@ void PrMat(int mat_size, double matrix[mat_size * mat_size]){
     printf("\n");
     for (i = 0; i < mat_size; i++){
         for (j = 0; j < mat_size; j++){
-            printf("%.3f\t", matrix[i*mat_size + j]);
+            printf("%.1f\t", matrix[i*mat_size + j]);
         }
         printf("\n");
     }
     printf("\n");
 }
 
-
+/* Swap pointers */
+void swap(double **arr1, double **arr2){
+    double *temp;
+    temp = *arr1;
+    *arr1 = *arr2;
+    *arr2 = temp;
+}
 
 
 
 int main(int argc, char *argv[]) {
 
-    int rank, nprocs,row_rank, col_rank, mat_size = 0, block_size =0, i, j, p_x, dest, Print = 0;
-    double *A_rows;
-    double *B_blocks;
+    int rank, nprocs,row_rank, col_rank, mat_size = 0, block_size = 0, i, j, p_x, dest, Print = 0;
+    double *cur_A_blocks;
+    double *next_A_blocks;
+
+    double *cur_B_blocks;
+    double *next_B_blocks;
+    
     double *C_blocks;
 
     double begin = 0, end; // for time measurements
@@ -57,13 +67,17 @@ int main(int argc, char *argv[]) {
     mat_size = atoi(argv[1]);
     if (argc == 3) Print = atoi(argv[2]);
 
-    double A[mat_size * mat_size];
-    double B[mat_size * mat_size];
-    double C[mat_size * mat_size];
+    double *A = NULL;
+    double *B = NULL;
+    double *C = NULL;
 
-    MPI_Request request3;
-    MPI_Request request4;
-    MPI_Request request5;
+    MPI_Request req_A_send;
+    MPI_Request req_A_recv;
+    MPI_Request req_A_bcast;
+    MPI_Request req_B_send;
+    MPI_Request req_B_recv;
+    MPI_Request req_B_init;
+    MPI_Request req_C_send;
 
 
     MPI_Init(&argc, &argv);       
@@ -99,10 +113,7 @@ int main(int argc, char *argv[]) {
     
 
     /* Define new type to send datas */
-    MPI_Datatype rowstype, blocktype, blockselect;
-
-    MPI_Type_contiguous(block_size * mat_size,  MPI_DOUBLE, &rowstype);
-    MPI_Type_commit(&rowstype);
+    MPI_Datatype blocktype, blockselect;
 
     MPI_Type_contiguous(block_size * block_size, MPI_DOUBLE, &blocktype);
     MPI_Type_commit(&blocktype);
@@ -117,10 +128,14 @@ int main(int argc, char *argv[]) {
     srand(time(NULL)); 
 	/* Generate random Matrices */
     if (rank == 0){
+        A = (double *)malloc(sizeof(double) * mat_size * mat_size);
+        B = (double *)malloc(sizeof(double) * mat_size * mat_size);
+        C = (double *)malloc(sizeof(double) * mat_size * mat_size);
+
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
-                A[i * mat_size + j] =( rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
-                B[i * mat_size + j] =( rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
+                A[i * mat_size + j] = (rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
+                B[i * mat_size + j] = (rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
 	        }
         }
 
@@ -128,10 +143,10 @@ int main(int argc, char *argv[]) {
 	    
         /* Distributes Blocks from A and B */
         for (i = 0; i < p_x; i++){
-            MPI_Isend(&A[i * block_size * mat_size], 1, rowstype, i, 3, col_comm, &request3);
+            MPI_Isend(&A[i * block_size * mat_size + i * block_size], 1, blockselect, i, 3, col_comm, &req_A_send);
 		    for (j = 0; j < p_x; j++){
                 dest = i * p_x + j;
-                MPI_Isend(&B[i*block_size*mat_size + j*block_size], 1, blockselect, dest, 4, MPI_COMM_WORLD, &request4);
+                MPI_Isend(&B[i*block_size*mat_size + j*block_size], 1, blockselect, dest, 4, MPI_COMM_WORLD, &req_B_init);
       	    }
        	}
     }
@@ -139,55 +154,69 @@ int main(int argc, char *argv[]) {
 /**********************************************************************
  * Collecting Blocks of initial matrix
  * *******************************************************************/
-    MPI_Bcast(&mat_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&block_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    A_rows = (double *)malloc(block_size * mat_size * sizeof(double));
-    for (i = 0; i < mat_size * block_size; i++)
-        A_rows[i] = 0;
+    cur_A_blocks = (double *)malloc(block_size * block_size * sizeof(double));
+    next_A_blocks = (double *)malloc(block_size * block_size * sizeof(double));
         
-    /* Collect A rows in the first column of processors */
     if (row_rank == 0){
-        MPI_Recv(A_rows, 1, rowstype, 0, 3, col_comm, MPI_STATUS_IGNORE);  
+        MPI_Irecv(cur_A_blocks, 1, blocktype, 0, 3, col_comm, &req_A_recv);
+        MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
     }
 
-    /* Broadcast A_rows on rows of processors */
-    MPI_Bcast(A_rows, 1, rowstype, 0, row_comm);
-
+    MPI_Ibcast(cur_A_blocks, 1, blocktype, 0, row_comm, &req_A_bcast);
+    
     /* Collect B blocks */
-    B_blocks= (double *)malloc(block_size * block_size * sizeof(double));
-    for (i = 0; i < block_size * block_size; i++)
-        B_blocks[i] = 0;
-    MPI_Recv(B_blocks, 1, blocktype, 0, 4, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    cur_B_blocks = (double *)malloc(block_size * block_size * sizeof(double));
+    next_B_blocks = (double *)malloc(block_size * block_size * sizeof(double));
+    
+    MPI_Irecv(cur_B_blocks, 1, blocktype, 0, 4, MPI_COMM_WORLD, &req_B_recv);
 
-    if (rank == 0){
-        MPI_Wait(&request3, MPI_STATUS_IGNORE);
-        MPI_Wait(&request4, MPI_STATUS_IGNORE);
-    }
-    
-    
 /**********************************************************************
  * FOX Algorithm
  * *******************************************************************/
 
-    
-    C_blocks = (double *)malloc(block_size * block_size * sizeof(double *));
+    /* Initialisation of the C blocks */
+    C_blocks = (double *)malloc(block_size * block_size * sizeof(double));
     for (i = 0; i < block_size * block_size; i++)
         C_blocks[i] = 0;
 
+    MPI_Wait(&req_A_bcast, MPI_STATUS_IGNORE);
+    MPI_Wait(&req_B_recv, MPI_STATUS_IGNORE);
+
     /* Apply fox algorithm on blocks */
-    for(i = 0; i < p_x; i++){
-        MPI_Isend(B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &request5);
-        Block_matmul(A_rows, B_blocks, C_blocks, block_size, mat_size, (col_rank + i) % p_x);
-        MPI_Recv(B_blocks, 1, blocktype, (col_rank + 1) % p_x, 100 + i, col_comm, MPI_STATUS_IGNORE);
-        MPI_Wait(&request5, MPI_STATUS_IGNORE);
+    for(i = 1; i < p_x; i++){
+        if (rank == 0){
+            for(j = 0; j < p_x; j++){
+                MPI_Isend(&A[((i + j)%p_x) * block_size + j * block_size * mat_size], 1, blockselect, j, 3, col_comm, &req_A_send);
+            }
+        }
+
+        if (row_rank == 0){
+            MPI_Irecv(next_A_blocks, 1, blocktype, 0, 3, col_comm, &req_A_recv);
+            MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
+        }
+        
+        MPI_Ibcast(next_A_blocks, 1, blocktype, 0, row_comm, &req_A_bcast);
+
+        MPI_Irecv(next_B_blocks, 1, blocktype, (col_rank + 1) % p_x, 100 + i, col_comm, &req_B_recv);
+        MPI_Isend(cur_B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &req_B_send);
+        
+        Block_matmul(cur_A_blocks, cur_B_blocks, C_blocks, block_size);
+        
+        MPI_Wait(&req_B_recv, MPI_STATUS_IGNORE);
+        MPI_Wait(&req_B_send, MPI_STATUS_IGNORE);
+        MPI_Wait(&req_A_bcast, MPI_STATUS_IGNORE);
+        
+        swap(&cur_B_blocks, &next_B_blocks);
+        swap(&cur_A_blocks, &next_A_blocks);
     }
 
+
+    Block_matmul(cur_A_blocks, cur_B_blocks, C_blocks, block_size);
     /* Send C_blocks in processors(i,j) back to root processor */
     
-    MPI_Isend(C_blocks, 1, blocktype, 0, 50, MPI_COMM_WORLD, &request5);
+    MPI_Isend(C_blocks, 1, blocktype, 0, 50, MPI_COMM_WORLD, &req_C_send);
     
-    /* Reception by root processor of all C_blocks and storing it C */	
+    /* Reception by root processor of all C_blocks and storing in C */	
     if (rank == 0){ 
         for (i = 0; i < p_x; i++){
             for (j = 0; j < p_x; j++){
@@ -209,15 +238,23 @@ int main(int argc, char *argv[]) {
             PrMat(mat_size, C);
         }
 
+        free(A);
+        free(B);
+        free(C);
         printf("\n Fox's algorithm time: %g s\n\n", end - begin);
     } 
 
-    MPI_Wait(&request5, MPI_STATUSES_IGNORE);
+    MPI_Wait(&req_C_send, MPI_STATUSES_IGNORE);
 
-    free(A_rows);
-    free(B_blocks);
+    free(cur_A_blocks);
+    free(next_A_blocks);
+    free(cur_B_blocks);
+    free(next_B_blocks);
     free(C_blocks);
-    
+
+    MPI_Type_free(&blockselect);
+    MPI_Type_free(&blocktype);
+
     MPI_Comm_free(&row_comm);   
     MPI_Comm_free(&col_comm);
     MPI_Finalize();
