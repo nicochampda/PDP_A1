@@ -49,6 +49,7 @@ void swap(double **arr1, double **arr2){
 int main(int argc, char *argv[]) {
 
     int rank, nprocs,row_rank, col_rank, mat_size = 0, block_size = 0, i, j, p_x, dest, Print = 0;
+    double *init_A_blocks;
     double *cur_A_blocks;
     double *next_A_blocks;
 
@@ -134,8 +135,8 @@ int main(int argc, char *argv[]) {
 
         for (i = 0; i < mat_size; i++){
 	        for (j = 0; j < mat_size; j++){
-                A[i * mat_size + j] = i+j; //(rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
-                B[i * mat_size + j] = i*j; //(rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
+                A[i * mat_size + j] = (rand()/(double)RAND_MAX )*(randmax-randmin) + randmin;  
+                B[i * mat_size + j] = (rand()/(double)RAND_MAX )*(randmax-randmin) + randmin; 
 	        }
         }
 
@@ -143,9 +144,9 @@ int main(int argc, char *argv[]) {
 	    
         /* Distributes Blocks from A and B */
         for (i = 0; i < p_x; i++){
-            MPI_Isend(&A[i * block_size * mat_size + i * block_size], 1, blockselect, i, 3, col_comm, &req_A_send);
 		    for (j = 0; j < p_x; j++){
                 dest = i * p_x + j;
+                MPI_Isend(&A[i*block_size*mat_size + j*block_size], 1, blockselect, dest, 3, MPI_COMM_WORLD, &req_A_send);
                 MPI_Isend(&B[i*block_size*mat_size + j*block_size], 1, blockselect, dest, 4, MPI_COMM_WORLD, &req_B_init);
       	    }
        	}
@@ -154,15 +155,18 @@ int main(int argc, char *argv[]) {
 /**********************************************************************
  * Collecting Blocks of initial matrix
  * *******************************************************************/
+    /* Collect A Blocks */
+    init_A_blocks = (double *)malloc(block_size * block_size * sizeof(double));
     cur_A_blocks = (double *)malloc(block_size * block_size * sizeof(double));
     next_A_blocks = (double *)malloc(block_size * block_size * sizeof(double));
         
-    if (row_rank == 0){
-        MPI_Irecv(cur_A_blocks, 1, blocktype, 0, 3, col_comm, &req_A_recv);
-        MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
-    }
+    MPI_Irecv(init_A_blocks, 1, blocktype, 0, 3, MPI_COMM_WORLD, &req_A_recv);
+    MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
 
-    MPI_Ibcast(cur_A_blocks, 1, blocktype, 0, row_comm, &req_A_bcast);
+    if(row_rank == col_rank){
+        swap(&init_A_blocks, &cur_A_blocks);
+    }
+    MPI_Ibcast(cur_A_blocks, 1, blocktype, col_rank, row_comm, &req_A_bcast);
     
     /* Collect B blocks */
     cur_B_blocks = (double *)malloc(block_size * block_size * sizeof(double));
@@ -184,19 +188,13 @@ int main(int argc, char *argv[]) {
 
     /* Apply fox algorithm on blocks */
     for(i = 1; i < p_x; i++){
-        if (rank == 0){
-            for(j = 0; j < p_x; j++){
-                MPI_Isend(&A[((i + j)%p_x) * block_size + j * block_size * mat_size], 1, blockselect, j, 3, col_comm, &req_A_send);
-            }
+        /* Broadcast the usefull block of A */
+        if(row_rank == (col_rank + i)%p_x){
+            swap(&init_A_blocks, &next_A_blocks);
         }
+        MPI_Ibcast(next_A_blocks, 1, blocktype, (col_rank + i)%p_x, row_comm, &req_A_bcast);
 
-        if (row_rank == 0){
-            MPI_Irecv(next_A_blocks, 1, blocktype, 0, 3, col_comm, &req_A_recv);
-            MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
-        }
-        
-        MPI_Ibcast(next_A_blocks, 1, blocktype, 0, row_comm, &req_A_bcast);
-
+        /* Shift B blocks upward */
         MPI_Irecv(next_B_blocks, 1, blocktype, (col_rank + 1) % p_x, 100 + i, col_comm, &req_B_recv);
         MPI_Isend(cur_B_blocks, 1, blocktype, (col_rank - 1 + p_x) % p_x, 100 + i, col_comm, &req_B_send);
         
