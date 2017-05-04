@@ -12,12 +12,15 @@
 
 
 /* Function to perform the step 2 of Fox's algorithm */
-void Block_matmul(double *subA, double *subB, double *subC, int block_size){
-    int i,j,k;
+void Block_matmul(double *subA, double *restrict subB, double *restrict subC, int block_size){
+    int i, j, k, i_b, k_b, a;
     for(i = 0; i < block_size; i++){
+        i_b = i * block_size;
         for(k = 0; k < block_size; k++){
+            k_b = k * block_size;
+            a = i_b + k;
             for(j = 0; j < block_size; j++){ // efficient matrix multiplication
-                subC[i*block_size + j] += subA[i*block_size + k] * subB[k * block_size + j];
+                subC[i_b + j] += subA[a] * subB[k_b + j];
             }
         }
     }     
@@ -244,6 +247,7 @@ int main(int argc, char *argv[]) {
 
     MPI_Wait(&req_C_send, MPI_STATUSES_IGNORE);
 
+    free(init_A_blocks);
     free(cur_A_blocks);
     free(next_A_blocks);
     free(cur_B_blocks);
