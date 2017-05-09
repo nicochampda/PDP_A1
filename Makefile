@@ -1,5 +1,5 @@
 CC         =  mpicc
-CCFLAGS    =  -O3 -Wall -g
+CCFLAGS    =  -O3 -Wall
 LIBS       =  -lmpi -lm
 
 matmult: matmult.c
