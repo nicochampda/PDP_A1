@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
         MPI_Wait(&req_B_recv, MPI_STATUS_IGNORE);
         MPI_Wait(&req_B_send, MPI_STATUS_IGNORE);
         
-        memcpy(cur_B_blocks, next_B_blocks, block_size * block_size * sizeof(double));
+        swap(&cur_B_blocks, &next_B_blocks);
     }
 
 
