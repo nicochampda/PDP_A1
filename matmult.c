@@ -186,6 +186,7 @@ int main(int argc, char *argv[]) {
     MPI_Wait(&req_B_recv, MPI_STATUS_IGNORE);
     MPI_Wait(&req_A_bcast, MPI_STATUS_IGNORE);
 
+    double start = MPI_Wtime();
     /* Apply fox algorithm on blocks */
     for(i = 1; i < p_x; i++){
         /* Broadcast the usefull block of A */
@@ -214,6 +215,9 @@ int main(int argc, char *argv[]) {
     Block_matmul(cur_A_blocks, cur_B_blocks, C_blocks, block_size);
     /* Send C_blocks in processors(i,j) back to root processor */
     
+    if(rank == 0)
+        printf("Fox algorithm time : %f\n", MPI_Wtime() - start);
+
     MPI_Isend(C_blocks, 1, blocktype, 0, 50, MPI_COMM_WORLD, &req_C_send);
     
     /* Waiting of all C blocks */	
@@ -233,7 +237,7 @@ int main(int argc, char *argv[]) {
         free(A);
         free(B);
         free(C);
-        printf("\n Fox's algorithm time: %g s\n\n", end - begin);
+        printf("\n Global time: %g s\n\n", end - begin);
     } 
 
     MPI_Wait(&req_C_send, MPI_STATUSES_IGNORE);
